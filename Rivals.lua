@@ -28,93 +28,54 @@ local AIM_WALL_CHECK = true
 -- TEAM DETECTION
 --========================================================--
 
-local TEAM_ATTRIBUTE_NAMES = {
-	"Team",
-	"TeamName",
-	"TeamID",
-	"TeamId",
-	"TeamColor",
-	"Faction",
-	"FactionName",
-	"Squad",
-	"SquadName",
-}
+--========================================================--
+-- TEAM DETECTION
+--========================================================--
 
-local TEAM_VALUE_NAMES = {
-	"Team",
-	"TeamName",
-	"TeamID",
-	"TeamId",
-	"Faction",
-	"FactionName",
-	"Squad",
-	"SquadName",
-}
-
-local ENEMY_ATTRIBUTE_NAMES = {
-	"IsEnemy",
-	"Enemy",
-	"IsTeammate",
-	"Teammate",
-}
-
-local function normalize(value)
-	if value == nil then
-		return nil
-	end
-
-	local s = tostring(value):lower()
-
-	s = s:gsub("%s+", "")
-	s = s:gsub("_", "")
-	s = s:gsub("-", "")
-
-	return s
-end
-
-local function getAttributeValue(instance, names)
-	if not instance then
-		return nil
-	end
-
-	for _, name in ipairs(names) do
-		local value = instance:GetAttribute(name)
-
-		if value ~= nil then
-			return value
-		end
-	end
-
-	return nil
-end
-
-local function getValueObject(instance, names)
-	if not instance then
-		return nil
-	end
-
-	for _, name in ipairs(names) do
-		local object = instance:FindFirstChild(name, true)
-
-		if object then
-			if object:IsA("StringValue")
-				or object:IsA("IntValue")
-				or object:IsA("NumberValue")
-				or object:IsA("BoolValue")
-				or object:IsA("ObjectValue") then
-
-				return object.Value
-			end
-		end
-	end
-
-	return nil
-end
-
-local function getTeamIdentity(player)
+local function isEnemy(player)
 	if not player then
-		return nil
+		return false
 	end
+
+	-- Never target yourself
+	if player == LocalPlayer then
+		return false
+	end
+
+	--====================================================--
+	-- PRIMARY CHECK: ROBLOX TEAM
+	--====================================================--
+
+	local myTeam = LocalPlayer.Team
+	local theirTeam = player.Team
+
+	if myTeam ~= nil and theirTeam ~= nil then
+		return myTeam ~= theirTeam
+	end
+
+	--====================================================--
+	-- SECONDARY CHECK: TEAM COLOR
+	--====================================================--
+
+	local myTeamColor = LocalPlayer.TeamColor
+	local theirTeamColor = player.TeamColor
+
+	if myTeamColor ~= nil and theirTeamColor ~= nil then
+		if myTeamColor ~= BrickColor.White()
+			and theirTeamColor ~= BrickColor.White() then
+
+			return myTeamColor ~= theirTeamColor
+		end
+	end
+
+	--====================================================--
+	-- NO RELIABLE TEAM INFORMATION
+	--====================================================--
+
+	-- Do NOT assume they are an enemy.
+	-- This prevents unknown players from being targeted.
+	return false
+end
 
 	--====================================================--
 	-- 1. NORMAL ROBLOX TEAM
