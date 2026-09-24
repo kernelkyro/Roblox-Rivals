@@ -28,10 +28,6 @@ local AIM_WALL_CHECK = true
 -- TEAM DETECTION
 --========================================================--
 
---========================================================--
--- TEAM DETECTION
---========================================================--
-
 local function isEnemy(player)
 	if not player then
 		return false
@@ -42,10 +38,7 @@ local function isEnemy(player)
 		return false
 	end
 
-	--====================================================--
-	-- PRIMARY CHECK: ROBLOX TEAM
-	--====================================================--
-
+	-- Primary team check
 	local myTeam = LocalPlayer.Team
 	local theirTeam = player.Team
 
@@ -53,166 +46,16 @@ local function isEnemy(player)
 		return myTeam ~= theirTeam
 	end
 
-	--====================================================--
-	-- SECONDARY CHECK: TEAM COLOR
-	--====================================================--
-
+	-- Secondary team-color check
 	local myTeamColor = LocalPlayer.TeamColor
 	local theirTeamColor = player.TeamColor
 
 	if myTeamColor ~= nil and theirTeamColor ~= nil then
-		if myTeamColor ~= BrickColor.White()
-			and theirTeamColor ~= BrickColor.White() then
-
-			return myTeamColor ~= theirTeamColor
-		end
+		return myTeamColor ~= theirTeamColor
 	end
 
-	--====================================================--
-	-- NO RELIABLE TEAM INFORMATION
-	--====================================================--
-
-	-- Do NOT assume they are an enemy.
-	-- This prevents unknown players from being targeted.
-	return false
-end
-
-	--====================================================--
-	-- 1. NORMAL ROBLOX TEAM
-	--====================================================--
-
-	if player.Team ~= nil then
-		return "TEAM:" .. tostring(player.Team)
-	end
-
-	--====================================================--
-	-- 2. TEAM COLOR
-	--====================================================--
-
-	if player.TeamColor ~= nil then
-		return "COLOR:" .. tostring(player.TeamColor)
-	end
-
-	--====================================================--
-	-- 3. PLAYER ATTRIBUTES
-	--====================================================--
-
-	local attribute = getAttributeValue(player, TEAM_ATTRIBUTE_NAMES)
-
-	if attribute ~= nil then
-		return "ATTR:" .. normalize(attribute)
-	end
-
-	--====================================================--
-	-- 4. PLAYER VALUE OBJECTS
-	--====================================================--
-
-	local value = getValueObject(player, TEAM_VALUE_NAMES)
-
-	if value ~= nil then
-		return "VALUE:" .. normalize(value)
-	end
-
-	--====================================================--
-	-- 5. CHARACTER ATTRIBUTES
-	--====================================================--
-
-	if player.Character then
-		local characterAttribute =
-			getAttributeValue(player.Character, TEAM_ATTRIBUTE_NAMES)
-
-		if characterAttribute ~= nil then
-			return "CHARATTR:" .. normalize(characterAttribute)
-		end
-
-		local characterValue =
-			getValueObject(player.Character, TEAM_VALUE_NAMES)
-
-		if characterValue ~= nil then
-			return "CHARVALUE:" .. normalize(characterValue)
-		end
-	end
-
-	return nil
-end
-
-local function getExplicitEnemyState(player)
-	if not player then
-		return nil
-	end
-
-	local value = getAttributeValue(player, ENEMY_ATTRIBUTE_NAMES)
-
-	if value ~= nil then
-		if typeof(value) == "boolean" then
-			return value
-		end
-
-		local normalized = normalize(value)
-
-		if normalized == "true"
-			or normalized == "yes"
-			or normalized == "1" then
-			return true
-		end
-
-		if normalized == "false"
-			or normalized == "no"
-			or normalized == "0" then
-			return false
-		end
-	end
-
-	local valueObject = getValueObject(player, ENEMY_ATTRIBUTE_NAMES)
-
-	if valueObject ~= nil and typeof(valueObject) == "boolean" then
-		return valueObject
-	end
-
-	return nil
-end
-
-local function isEnemy(player)
-	if not player then
-		return false
-	end
-
-	if player == LocalPlayer then
-		return false
-	end
-
-	--====================================================--
-	-- EXPLICIT ENEMY / TEAMMATE FLAGS
-	--====================================================--
-
-	local explicitEnemy = getExplicitEnemyState(player)
-
-	if explicitEnemy ~= nil then
-		return explicitEnemy
-	end
-
-	--====================================================--
-	-- COMPARE TEAM IDENTITIES
-	--====================================================--
-
-	local myTeam = getTeamIdentity(LocalPlayer)
-	local theirTeam = getTeamIdentity(player)
-
-	if myTeam ~= nil and theirTeam ~= nil then
-		return myTeam ~= theirTeam
-	end
-
-	--====================================================--
-	-- FALLBACK
-	--====================================================--
-
-	-- If the game gives us no usable team information,
-	-- don't automatically assume this player is an enemy.
-	--
-	-- This prevents the script from deliberately targeting
-	-- teammates when the game's custom team system cannot
-	-- be identified.
-
+	-- If we cannot determine the team,
+	-- fail safely instead of treating the player as an enemy.
 	return false
 end
 
@@ -265,11 +108,14 @@ local function getAimPart(player)
 		return nil
 	end
 
-	local distance =
-		(LocalPlayer.Character
-		and getRoot(LocalPlayer.Character)
-		and (root.Position - getRoot(LocalPlayer.Character).Position).Magnitude)
-		or math.huge
+	local localCharacter = LocalPlayer.Character
+	local localRoot = getRoot(localCharacter)
+
+	local distance = math.huge
+
+	if localRoot then
+		distance = (root.Position - localRoot.Position).Magnitude
+	end
 
 	-- Close range: favor torso/root
 	if distance <= CLOSE_RANGE then
@@ -389,7 +235,6 @@ local function getBestTarget()
 
 						if hasLineOfSight(part) then
 
-							-- Give the current target some stickiness
 							local score = screenDistance
 
 							if player == CurrentTarget then
@@ -470,9 +315,11 @@ local function createESP(player)
 
 	highlight.Adornee = player.Character
 
-	-- Red enemy appearance
-	highlight.FillColor = Color3.fromRGB(255, 60, 60)
-	highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+	highlight.FillColor =
+		Color3.fromRGB(255, 60, 60)
+
+	highlight.OutlineColor =
+		Color3.fromRGB(255, 255, 255)
 
 	highlight.Enabled = true
 end
@@ -700,12 +547,18 @@ end)
 --========================================================--
 
 Close.MouseButton1Click:Connect(function()
+
 	for player in pairs(highlights) do
 		removeESP(player)
 	end
 
-	ESP_FOLDER:Destroy()
-	ScreenGui:Destroy()
+	if ESP_FOLDER then
+		ESP_FOLDER:Destroy()
+	end
+
+	if ScreenGui then
+		ScreenGui:Destroy()
+	end
 end)
 
 --========================================================--
@@ -782,7 +635,8 @@ RunService.RenderStepped:Connect(function(deltaTime)
 
 			CurrentTarget = target
 
-			local cameraPosition = Camera.CFrame.Position
+			local cameraPosition =
+				Camera.CFrame.Position
 
 			local desired =
 				CFrame.lookAt(
@@ -799,6 +653,7 @@ RunService.RenderStepped:Connect(function(deltaTime)
 		else
 			CurrentTarget = nil
 		end
+
 	else
 		CurrentTarget = nil
 	end
