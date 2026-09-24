@@ -1,373 +1,217 @@
---========================================================
--- RIVALS-STYLE AIM ASSIST + ENEMY ESP
--- For your own Roblox game
---
--- Place in:
--- StarterPlayer
---   └─ StarterPlayerScripts
---      └─ AimAssist (LocalScript)
---========================================================
-
---========================================================
--- SERVICES
---========================================================
+--========================================================--
+--                  AIM + ENEMY ESP                      --
+--========================================================--
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
 
---========================================================
+--========================================================--
 -- SETTINGS
---========================================================
+--========================================================--
 
-local AIM_ENABLED = false
-local ESP_ENABLED = false
-
--- Very large aim area
 local FOV_RADIUS = 1500
-
--- Very large world range
 local MAX_AIM_DISTANCE = 3000
-
--- Aggressive camera tracking
 local AIM_STRENGTH = 0.75
-
--- Keeps the current target from rapidly switching
 local TARGET_STICKINESS = 250
-
--- Special close-range handling
 local CLOSE_RANGE = 18
 
--- Teammates are NEVER targeted/highlighted
-local IGNORE_TEAMMATES = true
+local AIM_ENABLED = true
+local ESP_ENABLED = true
 
--- Don't aim through walls
 local AIM_WALL_CHECK = true
 
--- ESP settings
-local ESP_FILL_TRANSPARENCY = 0.72
-local ESP_OUTLINE_TRANSPARENCY = 0
+--========================================================--
+-- TEAM DETECTION
+--========================================================--
 
---========================================================
--- CHARACTER
---========================================================
+local TEAM_ATTRIBUTE_NAMES = {
+	"Team",
+	"TeamName",
+	"TeamID",
+	"TeamId",
+	"TeamColor",
+	"Faction",
+	"FactionName",
+	"Squad",
+	"SquadName",
+}
 
-local Character
-local Humanoid
-local RootPart
+local TEAM_VALUE_NAMES = {
+	"Team",
+	"TeamName",
+	"TeamID",
+	"TeamId",
+	"Faction",
+	"FactionName",
+	"Squad",
+	"SquadName",
+}
 
-local function updateCharacter()
-	Character = LocalPlayer.Character
+local ENEMY_ATTRIBUTE_NAMES = {
+	"IsEnemy",
+	"Enemy",
+	"IsTeammate",
+	"Teammate",
+}
 
-	if not Character then
-		Humanoid = nil
-		RootPart = nil
-		return
+local function normalize(value)
+	if value == nil then
+		return nil
 	end
 
-	Humanoid = Character:FindFirstChildOfClass("Humanoid")
-	RootPart = Character:FindFirstChild("HumanoidRootPart")
+	local s = tostring(value):lower()
+
+	s = s:gsub("%s+", "")
+	s = s:gsub("_", "")
+	s = s:gsub("-", "")
+
+	return s
 end
 
-updateCharacter()
-
-LocalPlayer.CharacterAdded:Connect(function()
-	task.wait(0.25)
-	updateCharacter()
-end)
-
---========================================================
--- GUI
---========================================================
-
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
-
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "AimAssistUI"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.IgnoreGuiInset = true
-ScreenGui.Parent = PlayerGui
-
---========================================================
--- MAIN
---========================================================
-
-local Main = Instance.new("Frame")
-Main.Name = "Main"
-Main.Size = UDim2.fromOffset(315, 250)
-Main.Position = UDim2.new(0.5, -157, 0.18, 0)
-Main.BackgroundColor3 = Color3.fromRGB(17, 19, 27)
-Main.BorderSizePixel = 0
-Main.Parent = ScreenGui
-
-local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 12)
-MainCorner.Parent = Main
-
-local MainStroke = Instance.new("UIStroke")
-MainStroke.Thickness = 1.5
-MainStroke.Color = Color3.fromRGB(75, 80, 100)
-MainStroke.Parent = Main
-
---========================================================
--- TITLE
---========================================================
-
-local Title = Instance.new("TextLabel")
-Title.Name = "Title"
-Title.Size = UDim2.new(1, -90, 0, 42)
-Title.Position = UDim2.fromOffset(14, 0)
-Title.BackgroundTransparency = 1
-Title.Text = "AIM ASSIST"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.TextSize = 19
-Title.Font = Enum.Font.GothamBold
-Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = Main
-
---========================================================
--- MINIMIZE
---========================================================
-
-local Minimize = Instance.new("TextButton")
-Minimize.Name = "Minimize"
-Minimize.Size = UDim2.fromOffset(32, 28)
-Minimize.Position = UDim2.new(1, -70, 0, 7)
-Minimize.BackgroundColor3 = Color3.fromRGB(38, 41, 52)
-Minimize.BorderSizePixel = 0
-Minimize.Text = "—"
-Minimize.TextColor3 = Color3.fromRGB(255, 255, 255)
-Minimize.TextSize = 18
-Minimize.Font = Enum.Font.GothamBold
-Minimize.Parent = Main
-
-local MinCorner = Instance.new("UICorner")
-MinCorner.CornerRadius = UDim.new(0, 7)
-MinCorner.Parent = Minimize
-
---========================================================
--- CLOSE
---========================================================
-
-local Close = Instance.new("TextButton")
-Close.Name = "Close"
-Close.Size = UDim2.fromOffset(32, 28)
-Close.Position = UDim2.new(1, -34, 0, 7)
-Close.BackgroundColor3 = Color3.fromRGB(75, 35, 43)
-Close.BorderSizePixel = 0
-Close.Text = "×"
-Close.TextColor3 = Color3.fromRGB(255, 255, 255)
-Close.TextSize = 20
-Close.Font = Enum.Font.GothamBold
-Close.Parent = Main
-
-local CloseCorner = Instance.new("UICorner")
-CloseCorner.CornerRadius = UDim.new(0, 7)
-CloseCorner.Parent = Close
-
---========================================================
--- AIM TOGGLE
---========================================================
-
-local AimToggle = Instance.new("TextButton")
-AimToggle.Name = "AimToggle"
-AimToggle.Size = UDim2.new(1, -28, 0, 43)
-AimToggle.Position = UDim2.fromOffset(14, 50)
-AimToggle.BackgroundColor3 = Color3.fromRGB(43, 46, 58)
-AimToggle.BorderSizePixel = 0
-AimToggle.Text = "AIM ASSIST  •  OFF"
-AimToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-AimToggle.TextSize = 15
-AimToggle.Font = Enum.Font.GothamBold
-AimToggle.Parent = Main
-
-local AimCorner = Instance.new("UICorner")
-AimCorner.CornerRadius = UDim.new(0, 9)
-AimCorner.Parent = AimToggle
-
---========================================================
--- ESP TOGGLE
---========================================================
-
-local ESPToggle = Instance.new("TextButton")
-ESPToggle.Name = "ESPToggle"
-ESPToggle.Size = UDim2.new(1, -28, 0, 43)
-ESPToggle.Position = UDim2.fromOffset(14, 99)
-ESPToggle.BackgroundColor3 = Color3.fromRGB(43, 46, 58)
-ESPToggle.BorderSizePixel = 0
-ESPToggle.Text = "ENEMY ESP  •  OFF"
-ESPToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-ESPToggle.TextSize = 15
-ESPToggle.Font = Enum.Font.GothamBold
-ESPToggle.Parent = Main
-
-local ESPCorner = Instance.new("UICorner")
-ESPCorner.CornerRadius = UDim.new(0, 9)
-ESPCorner.Parent = ESPToggle
-
---========================================================
--- STATUS
---========================================================
-
-local Status = Instance.new("TextLabel")
-Status.Name = "Status"
-Status.Size = UDim2.new(1, -28, 0, 24)
-Status.Position = UDim2.fromOffset(14, 151)
-Status.BackgroundTransparency = 1
-Status.Text = "Target: None"
-Status.TextColor3 = Color3.fromRGB(195, 198, 215)
-Status.TextSize = 13
-Status.Font = Enum.Font.Gotham
-Status.TextXAlignment = Enum.TextXAlignment.Left
-Status.Parent = Main
-
---========================================================
--- SETTINGS
---========================================================
-
-local SettingsText = Instance.new("TextLabel")
-SettingsText.Name = "Settings"
-SettingsText.Size = UDim2.new(1, -28, 0, 45)
-SettingsText.Position = UDim2.fromOffset(14, 181)
-SettingsText.BackgroundTransparency = 1
-SettingsText.Text = "FOV 1500  •  RANGE 3000\nEnemy-only targeting + ESP"
-SettingsText.TextColor3 = Color3.fromRGB(125, 130, 150)
-SettingsText.TextSize = 11
-SettingsText.Font = Enum.Font.Gotham
-SettingsText.TextXAlignment = Enum.TextXAlignment.Left
-SettingsText.Parent = Main
-
---========================================================
--- UI STATE
---========================================================
-
-local function updateAimUI()
-	if AIM_ENABLED then
-		AimToggle.Text = "AIM ASSIST  •  ON"
-		AimToggle.BackgroundColor3 = Color3.fromRGB(38, 105, 70)
-	else
-		AimToggle.Text = "AIM ASSIST  •  OFF"
-		AimToggle.BackgroundColor3 = Color3.fromRGB(43, 46, 58)
+local function getAttributeValue(instance, names)
+	if not instance then
+		return nil
 	end
+
+	for _, name in ipairs(names) do
+		local value = instance:GetAttribute(name)
+
+		if value ~= nil then
+			return value
+		end
+	end
+
+	return nil
 end
 
-local function updateESPUI()
-	if ESP_ENABLED then
-		ESPToggle.Text = "ENEMY ESP  •  ON"
-		ESPToggle.BackgroundColor3 = Color3.fromRGB(38, 105, 70)
-	else
-		ESPToggle.Text = "ENEMY ESP  •  OFF"
-		ESPToggle.BackgroundColor3 = Color3.fromRGB(43, 46, 58)
-	end
-end
-
---========================================================
--- AIM TOGGLE
---========================================================
-
-AimToggle.MouseButton1Click:Connect(function()
-	AIM_ENABLED = not AIM_ENABLED
-
-	if not AIM_ENABLED then
-		Status.Text = "Target: None"
+local function getValueObject(instance, names)
+	if not instance then
+		return nil
 	end
 
-	updateAimUI()
-end)
+	for _, name in ipairs(names) do
+		local object = instance:FindFirstChild(name, true)
 
---========================================================
--- ESP TOGGLE
---========================================================
+		if object then
+			if object:IsA("StringValue")
+				or object:IsA("IntValue")
+				or object:IsA("NumberValue")
+				or object:IsA("BoolValue")
+				or object:IsA("ObjectValue") then
 
-ESPToggle.MouseButton1Click:Connect(function()
-	ESP_ENABLED = not ESP_ENABLED
-
-	updateESPUI()
-end)
-
---========================================================
--- MINIMIZE
---========================================================
-
-local minimized = false
-
-Minimize.MouseButton1Click:Connect(function()
-	minimized = not minimized
-
-	if minimized then
-		Main.Size = UDim2.fromOffset(315, 47)
-
-		AimToggle.Visible = false
-		ESPToggle.Visible = false
-		Status.Visible = false
-		SettingsText.Visible = false
-
-		Minimize.Text = "+"
-	else
-		Main.Size = UDim2.fromOffset(315, 250)
-
-		AimToggle.Visible = true
-		ESPToggle.Visible = true
-		Status.Visible = true
-		SettingsText.Visible = true
-
-		Minimize.Text = "—"
-	end
-end)
-
---========================================================
--- DRAGGING
---========================================================
-
-local dragging = false
-local dragStart
-local startPosition
-
-Title.InputBegan:Connect(function(input)
-
-	if input.UserInputType == Enum.UserInputType.MouseButton1
-		or input.UserInputType == Enum.UserInputType.Touch then
-
-		dragging = true
-		dragStart = input.Position
-		startPosition = Main.Position
-
-		input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then
-				dragging = false
+				return object.Value
 			end
-		end)
-	end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-
-	if not dragging then
-		return
+		end
 	end
 
-	if input.UserInputType == Enum.UserInputType.MouseMovement
-		or input.UserInputType == Enum.UserInputType.Touch then
+	return nil
+end
 
-		local delta = input.Position - dragStart
-
-		Main.Position = UDim2.new(
-			startPosition.X.Scale,
-			startPosition.X.Offset + delta.X,
-			startPosition.Y.Scale,
-			startPosition.Y.Offset + delta.Y
-		)
+local function getTeamIdentity(player)
+	if not player then
+		return nil
 	end
-end)
 
---========================================================
--- TEAM CHECK
---========================================================
+	--====================================================--
+	-- 1. NORMAL ROBLOX TEAM
+	--====================================================--
+
+	if player.Team ~= nil then
+		return "TEAM:" .. tostring(player.Team)
+	end
+
+	--====================================================--
+	-- 2. TEAM COLOR
+	--====================================================--
+
+	if player.TeamColor ~= nil then
+		return "COLOR:" .. tostring(player.TeamColor)
+	end
+
+	--====================================================--
+	-- 3. PLAYER ATTRIBUTES
+	--====================================================--
+
+	local attribute = getAttributeValue(player, TEAM_ATTRIBUTE_NAMES)
+
+	if attribute ~= nil then
+		return "ATTR:" .. normalize(attribute)
+	end
+
+	--====================================================--
+	-- 4. PLAYER VALUE OBJECTS
+	--====================================================--
+
+	local value = getValueObject(player, TEAM_VALUE_NAMES)
+
+	if value ~= nil then
+		return "VALUE:" .. normalize(value)
+	end
+
+	--====================================================--
+	-- 5. CHARACTER ATTRIBUTES
+	--====================================================--
+
+	if player.Character then
+		local characterAttribute =
+			getAttributeValue(player.Character, TEAM_ATTRIBUTE_NAMES)
+
+		if characterAttribute ~= nil then
+			return "CHARATTR:" .. normalize(characterAttribute)
+		end
+
+		local characterValue =
+			getValueObject(player.Character, TEAM_VALUE_NAMES)
+
+		if characterValue ~= nil then
+			return "CHARVALUE:" .. normalize(characterValue)
+		end
+	end
+
+	return nil
+end
+
+local function getExplicitEnemyState(player)
+	if not player then
+		return nil
+	end
+
+	local value = getAttributeValue(player, ENEMY_ATTRIBUTE_NAMES)
+
+	if value ~= nil then
+		if typeof(value) == "boolean" then
+			return value
+		end
+
+		local normalized = normalize(value)
+
+		if normalized == "true"
+			or normalized == "yes"
+			or normalized == "1" then
+			return true
+		end
+
+		if normalized == "false"
+			or normalized == "no"
+			or normalized == "0" then
+			return false
+		end
+	end
+
+	local valueObject = getValueObject(player, ENEMY_ATTRIBUTE_NAMES)
+
+	if valueObject ~= nil and typeof(valueObject) == "boolean" then
+		return valueObject
+	end
+
+	return nil
+end
 
 local function isEnemy(player)
-
 	if not player then
 		return false
 	end
@@ -376,125 +220,148 @@ local function isEnemy(player)
 		return false
 	end
 
-	-- Normal Roblox Team system.
-	--
-	-- If both players have a Team and the Teams are equal,
-	-- this player is DEFINITELY a teammate.
-	if IGNORE_TEAMMATES then
+	--====================================================--
+	-- EXPLICIT ENEMY / TEAMMATE FLAGS
+	--====================================================--
 
-		local myTeam = LocalPlayer.Team
-		local theirTeam = player.Team
+	local explicitEnemy = getExplicitEnemyState(player)
 
-		if myTeam ~= nil
-			and theirTeam ~= nil
-			and myTeam == theirTeam then
-
-			return false
-		end
+	if explicitEnemy ~= nil then
+		return explicitEnemy
 	end
 
-	return true
+	--====================================================--
+	-- COMPARE TEAM IDENTITIES
+	--====================================================--
+
+	local myTeam = getTeamIdentity(LocalPlayer)
+	local theirTeam = getTeamIdentity(player)
+
+	if myTeam ~= nil and theirTeam ~= nil then
+		return myTeam ~= theirTeam
+	end
+
+	--====================================================--
+	-- FALLBACK
+	--====================================================--
+
+	-- If the game gives us no usable team information,
+	-- don't automatically assume this player is an enemy.
+	--
+	-- This prevents the script from deliberately targeting
+	-- teammates when the game's custom team system cannot
+	-- be identified.
+
+	return false
 end
 
---========================================================
--- TARGET HUMANOID
---========================================================
+--========================================================--
+-- CHARACTER HELPERS
+--========================================================--
 
-local function getHumanoid(character)
-
+local function getRoot(character)
 	if not character then
 		return nil
 	end
 
-	local humanoid =
-		character:FindFirstChildOfClass("Humanoid")
-
-	if not humanoid then
-		return nil
-	end
-
-	if humanoid.Health <= 0 then
-		return nil
-	end
-
-	return humanoid
+	return character:FindFirstChild("HumanoidRootPart")
+		or character:FindFirstChild("UpperTorso")
+		or character:FindFirstChild("Torso")
 end
 
---========================================================
--- AIM PART
---========================================================
+local function getHumanoid(character)
+	if not character then
+		return nil
+	end
+
+	return character:FindFirstChildOfClass("Humanoid")
+end
+
+local function isAlive(player)
+	if not player.Character then
+		return false
+	end
+
+	local humanoid = getHumanoid(player.Character)
+
+	if not humanoid then
+		return false
+	end
+
+	return humanoid.Health > 0
+end
 
 local function getAimPart(player)
-
 	local character = player.Character
 
 	if not character then
 		return nil
 	end
 
-	local humanoid = getHumanoid(character)
+	local root = getRoot(character)
 
-	if not humanoid then
-		return nil
-	end
-
-	local targetRoot =
-		character:FindFirstChild("HumanoidRootPart")
-
-	if not targetRoot then
-		return nil
-	end
-
-	if not RootPart then
+	if not root then
 		return nil
 	end
 
 	local distance =
-		(targetRoot.Position - RootPart.Position).Magnitude
+		(LocalPlayer.Character
+		and getRoot(LocalPlayer.Character)
+		and (root.Position - getRoot(LocalPlayer.Character).Position).Magnitude)
+		or math.huge
 
-	-- Close-range targeting.
+	-- Close range: favor torso/root
 	if distance <= CLOSE_RANGE then
-
-		local torso =
-			character:FindFirstChild("UpperTorso")
+		return character:FindFirstChild("UpperTorso")
 			or character:FindFirstChild("Torso")
-
-		if torso and torso:IsA("BasePart") then
-			return torso
-		end
-
-		return targetRoot
+			or character:FindFirstChild("HumanoidRootPart")
+			or character:FindFirstChild("Head")
 	end
 
-	-- Normal range: prefer Head.
-	local head = character:FindFirstChild("Head")
-
-	if head and head:IsA("BasePart") then
-		return head
-	end
-
-	local torso =
-		character:FindFirstChild("UpperTorso")
+	-- Normal range: favor head
+	return character:FindFirstChild("Head")
+		or character:FindFirstChild("UpperTorso")
 		or character:FindFirstChild("Torso")
-
-	if torso and torso:IsA("BasePart") then
-		return torso
-	end
-
-	return targetRoot
+		or character:FindFirstChild("HumanoidRootPart")
 end
 
---========================================================
+--========================================================--
+-- SCREEN DISTANCE
+--========================================================--
+
+local function getScreenDistance(worldPosition)
+	local screenPosition, visible =
+		Camera:WorldToViewportPoint(worldPosition)
+
+	if not visible then
+		return math.huge
+	end
+
+	local viewport = Camera.ViewportSize
+
+	local center = Vector2.new(
+		viewport.X / 2,
+		viewport.Y / 2
+	)
+
+	local point = Vector2.new(
+		screenPosition.X,
+		screenPosition.Y
+	)
+
+	return (point - center).Magnitude
+end
+
+--========================================================--
 -- WALL CHECK
---========================================================
+--========================================================--
 
-local function canSee(part)
-
+local function hasLineOfSight(part)
 	if not AIM_WALL_CHECK then
 		return true
 	end
 
-	if not Character or not Camera then
+	if not part then
 		return false
 	end
 
@@ -505,18 +372,23 @@ local function canSee(part)
 
 	params.FilterType = Enum.RaycastFilterType.Exclude
 
-	params.FilterDescendantsInstances = {
-		Character,
-		Camera
-	}
+	local filter = {}
 
+	if LocalPlayer.Character then
+		table.insert(filter, LocalPlayer.Character)
+	end
+
+	table.insert(filter, Camera)
+
+	params.FilterDescendantsInstances = filter
 	params.IgnoreWater = true
 
-	local result = workspace:Raycast(
-		origin,
-		direction,
-		params
-	)
+	local result =
+		workspace:Raycast(
+			origin,
+			direction,
+			params
+		)
 
 	if not result then
 		return true
@@ -525,135 +397,51 @@ local function canSee(part)
 	return result.Instance:IsDescendantOf(part.Parent)
 end
 
---========================================================
--- SCREEN DISTANCE
---========================================================
+--========================================================--
+-- TARGET SELECTION
+--========================================================--
 
-local function getScreenDistance(part)
+local CurrentTarget = nil
 
-	if not Camera then
-		return math.huge
-	end
-
-	local viewport = Camera.ViewportSize
-
-	local screenCenter = Vector2.new(
-		viewport.X / 2,
-		viewport.Y / 2
-	)
-
-	local screenPosition, visible =
-		Camera:WorldToViewportPoint(part.Position)
-
-	if not visible then
-		return math.huge
-	end
-
-	local point = Vector2.new(
-		screenPosition.X,
-		screenPosition.Y
-	)
-
-	return (point - screenCenter).Magnitude
-end
-
---========================================================
--- TARGET SCORE
---========================================================
-
-local function getTargetScore(player, part)
-
-	if not isEnemy(player) then
-		return math.huge
-	end
-
-	local screenDistance =
-		getScreenDistance(part)
-
-	if screenDistance == math.huge then
-		return math.huge
-	end
-
-	if screenDistance > FOV_RADIUS then
-		return math.huge
-	end
-
-	if not RootPart then
-		return math.huge
-	end
-
-	local character = player.Character
-
-	if not character then
-		return math.huge
-	end
-
-	local targetRoot =
-		character:FindFirstChild("HumanoidRootPart")
-
-	if not targetRoot then
-		return math.huge
-	end
-
-	local distance =
-		(targetRoot.Position - RootPart.Position).Magnitude
-
-	if distance > MAX_AIM_DISTANCE then
-		return math.huge
-	end
-
-	if not canSee(part) then
-		return math.huge
-	end
-
-	local score = screenDistance
-
-	-- Strong close-range priority.
-	if distance <= CLOSE_RANGE then
-		score -= 500
-	elseif distance <= 40 then
-		score -= 150
-	end
-
-	-- Target stickiness.
-	if player == CurrentTarget then
-		score -= TARGET_STICKINESS
-	end
-
-	return score
-end
-
---========================================================
--- FIND TARGET
---========================================================
-
-local function findBestTarget()
-
-	if not Character or not RootPart then
-		return nil, nil
-	end
-
+local function getBestTarget()
 	local bestPlayer = nil
 	local bestPart = nil
 	local bestScore = math.huge
 
 	for _, player in ipairs(Players:GetPlayers()) do
 
-		-- FIRST FILTER:
-		-- Same team can never reach the targeting stage.
-		if isEnemy(player) then
+		if isEnemy(player) and isAlive(player) then
 
 			local part = getAimPart(player)
 
 			if part then
 
-				local score =
-					getTargetScore(player, part)
+				local distanceFromCamera =
+					(Camera.CFrame.Position - part.Position).Magnitude
 
-				if score < bestScore then
-					bestScore = score
-					bestPlayer = player
-					bestPart = part
+				if distanceFromCamera <= MAX_AIM_DISTANCE then
+
+					local screenDistance =
+						getScreenDistance(part.Position)
+
+					if screenDistance <= FOV_RADIUS then
+
+						if hasLineOfSight(part) then
+
+							-- Give the current target some stickiness
+							local score = screenDistance
+
+							if player == CurrentTarget then
+								score -= TARGET_STICKINESS
+							end
+
+							if score < bestScore then
+								bestScore = score
+								bestPlayer = player
+								bestPart = part
+							end
+						end
+					end
 				end
 			end
 		end
@@ -662,303 +450,439 @@ local function findBestTarget()
 	return bestPlayer, bestPart
 end
 
---========================================================
--- AIM
---========================================================
+--========================================================--
+-- ESP
+--========================================================--
 
-local function aimAt(part)
+local ESP_FOLDER = Instance.new("Folder")
+ESP_FOLDER.Name = "EnemyESP"
+ESP_FOLDER.Parent = workspace
 
-	if not part or not Camera then
-		return
+local highlights = {}
+
+local function removeESP(player)
+	local highlight = highlights[player]
+
+	if highlight then
+		highlight:Destroy()
+		highlights[player] = nil
 	end
-
-	local cameraPosition =
-		Camera.CFrame.Position
-
-	local targetPosition =
-		part.Position
-
-	local direction =
-		targetPosition - cameraPosition
-
-	if direction.Magnitude < 0.05 then
-		return
-	end
-
-	local desired =
-		CFrame.lookAt(
-			cameraPosition,
-			targetPosition
-		)
-
-	Camera.CFrame =
-		Camera.CFrame:Lerp(
-			desired,
-			AIM_STRENGTH
-		)
 end
 
---========================================================
--- ESP STORAGE
---========================================================
-
-local ESPFolder = Instance.new("Folder")
-ESPFolder.Name = "EnemyESP"
-ESPFolder.Parent = ScreenGui
-
-local ESPObjects = {}
-
---========================================================
--- CREATE ESP
---========================================================
-
 local function createESP(player)
-
 	if player == LocalPlayer then
+		return
+	end
+
+	if not ESP_ENABLED then
+		removeESP(player)
 		return
 	end
 
 	if not isEnemy(player) then
+		removeESP(player)
 		return
 	end
 
-	local character = player.Character
-
-	if not character then
+	if not player.Character then
+		removeESP(player)
 		return
 	end
 
-	if ESPObjects[player] then
-		return
+	local highlight = highlights[player]
+
+	if not highlight then
+		highlight = Instance.new("Highlight")
+
+		highlight.Name = "EnemyHighlight"
+
+		highlight.DepthMode =
+			Enum.HighlightDepthMode.AlwaysOnTop
+
+		highlight.FillTransparency = 0.65
+		highlight.OutlineTransparency = 0
+
+		highlight.Parent = ESP_FOLDER
+
+		highlights[player] = highlight
 	end
 
-	local highlight = Instance.new("Highlight")
+	highlight.Adornee = player.Character
 
-	highlight.Name = "EnemyHighlight"
-	highlight.Adornee = character
-
-	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-
-	highlight.FillColor = Color3.fromRGB(255, 55, 65)
+	-- Red enemy appearance
+	highlight.FillColor = Color3.fromRGB(255, 60, 60)
 	highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
 
-	highlight.FillTransparency = ESP_FILL_TRANSPARENCY
-	highlight.OutlineTransparency = ESP_OUTLINE_TRANSPARENCY
-
-	highlight.Enabled = ESP_ENABLED
-	highlight.Parent = ESPFolder
-
-	ESPObjects[player] = highlight
+	highlight.Enabled = true
 end
-
---========================================================
--- REMOVE ESP
---========================================================
-
-local function removeESP(player)
-
-	local highlight = ESPObjects[player]
-
-	if highlight then
-		highlight:Destroy()
-		ESPObjects[player] = nil
-	end
-end
-
---========================================================
--- REFRESH ESP
---========================================================
 
 local function refreshESP()
-
 	for _, player in ipairs(Players:GetPlayers()) do
 
 		if player ~= LocalPlayer then
-
-			if ESP_ENABLED and isEnemy(player) then
-
-				local character = player.Character
-
-				if character then
-
-					local existing =
-						ESPObjects[player]
-
-					if not existing then
-						createESP(player)
-					else
-						existing.Adornee = character
-						existing.Enabled = true
-					end
-
-				end
-
-			else
-
-				local existing =
-					ESPObjects[player]
-
-				if existing then
-					existing.Enabled = false
-				end
-			end
-		end
-	end
-end
-
---========================================================
--- PLAYER CONNECTIONS
---========================================================
-
-local function setupPlayer(player)
-
-	if player == LocalPlayer then
-		return
-	end
-
-	player.CharacterAdded:Connect(function()
-
-		task.wait(0.15)
-
-		removeESP(player)
-
-		if ESP_ENABLED and isEnemy(player) then
 			createESP(player)
 		end
-	end)
+	end
 
-	player.CharacterRemoving:Connect(function()
-		removeESP(player)
-	end)
+	for player in pairs(highlights) do
+		if not player.Parent then
+			removeESP(player)
+		end
+	end
 end
-
-for _, player in ipairs(Players:GetPlayers()) do
-	setupPlayer(player)
-end
-
-Players.PlayerAdded:Connect(function(player)
-	setupPlayer(player)
-end)
 
 Players.PlayerRemoving:Connect(function(player)
-
 	removeESP(player)
 
 	if CurrentTarget == player then
 		CurrentTarget = nil
-		CurrentTargetPart = nil
 	end
 end)
 
---========================================================
--- MAIN LOOP
---========================================================
+--========================================================--
+-- GUI
+--========================================================--
 
-RunService:BindToRenderStep(
-	"AimAssistMain",
-	Enum.RenderPriority.Camera.Value + 100,
-	function()
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "AimAssistUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
-		Camera = workspace.CurrentCamera
+local Main = Instance.new("Frame")
+Main.Name = "Main"
+Main.Size = UDim2.fromOffset(240, 150)
+Main.Position = UDim2.new(0, 25, 0.5, -75)
 
-		if not Camera then
-			return
+Main.BackgroundColor3 =
+	Color3.fromRGB(20, 20, 28)
+
+Main.BorderSizePixel = 0
+Main.Parent = ScreenGui
+
+local Corner = Instance.new("UICorner")
+Corner.CornerRadius = UDim.new(0, 12)
+Corner.Parent = Main
+
+local Stroke = Instance.new("UIStroke")
+Stroke.Thickness = 1
+Stroke.Transparency = 0.35
+Stroke.Parent = Main
+
+--========================================================--
+-- TITLE
+--========================================================--
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -80, 0, 35)
+Title.Position = UDim2.fromOffset(12, 5)
+
+Title.BackgroundTransparency = 1
+
+Title.Text = "AIM ASSIST"
+Title.TextSize = 18
+Title.Font = Enum.Font.GothamBold
+Title.TextColor3 = Color3.new(1, 1, 1)
+
+Title.TextXAlignment = Enum.TextXAlignment.Left
+
+Title.Parent = Main
+
+--========================================================--
+-- MINIMIZE
+--========================================================--
+
+local Minimize = Instance.new("TextButton")
+Minimize.Size = UDim2.fromOffset(30, 30)
+Minimize.Position = UDim2.new(1, -68, 0, 5)
+
+Minimize.BackgroundTransparency = 1
+Minimize.Text = "—"
+
+Minimize.TextSize = 24
+Minimize.Font = Enum.Font.GothamBold
+Minimize.TextColor3 = Color3.new(1, 1, 1)
+
+Minimize.Parent = Main
+
+--========================================================--
+-- CLOSE
+--========================================================--
+
+local Close = Instance.new("TextButton")
+Close.Size = UDim2.fromOffset(30, 30)
+Close.Position = UDim2.new(1, -35, 0, 5)
+
+Close.BackgroundTransparency = 1
+Close.Text = "×"
+
+Close.TextSize = 25
+Close.Font = Enum.Font.GothamBold
+Close.TextColor3 = Color3.fromRGB(255, 90, 90)
+
+Close.Parent = Main
+
+--========================================================--
+-- AIM BUTTON
+--========================================================--
+
+local AimButton = Instance.new("TextButton")
+AimButton.Size = UDim2.new(1, -24, 0, 40)
+AimButton.Position = UDim2.fromOffset(12, 45)
+
+AimButton.Font = Enum.Font.GothamBold
+AimButton.TextSize = 15
+
+AimButton.TextColor3 = Color3.new(1, 1, 1)
+
+AimButton.Parent = Main
+
+local AimCorner = Instance.new("UICorner")
+AimCorner.CornerRadius = UDim.new(0, 8)
+AimCorner.Parent = AimButton
+
+--========================================================--
+-- ESP BUTTON
+--========================================================--
+
+local ESPButton = Instance.new("TextButton")
+ESPButton.Size = UDim2.new(1, -24, 0, 40)
+ESPButton.Position = UDim2.fromOffset(12, 95)
+
+ESPButton.Font = Enum.Font.GothamBold
+ESPButton.TextSize = 15
+
+ESPButton.TextColor3 = Color3.new(1, 1, 1)
+
+ESPButton.Parent = Main
+
+local ESPButtonCorner = Instance.new("UICorner")
+ESPButtonCorner.CornerRadius = UDim.new(0, 8)
+ESPButtonCorner.Parent = ESPButton
+
+--========================================================--
+-- BUTTON UPDATE
+--========================================================--
+
+local function updateButtons()
+
+	if AIM_ENABLED then
+		AimButton.Text = "AIM ASSIST  •  ON"
+		AimButton.BackgroundColor3 =
+			Color3.fromRGB(45, 150, 85)
+	else
+		AimButton.Text = "AIM ASSIST  •  OFF"
+		AimButton.BackgroundColor3 =
+			Color3.fromRGB(60, 60, 70)
+	end
+
+	if ESP_ENABLED then
+		ESPButton.Text = "ENEMY ESP  •  ON"
+		ESPButton.BackgroundColor3 =
+			Color3.fromRGB(45, 110, 180)
+	else
+		ESPButton.Text = "ENEMY ESP  •  OFF"
+		ESPButton.BackgroundColor3 =
+			Color3.fromRGB(60, 60, 70)
+	end
+end
+
+updateButtons()
+
+--========================================================--
+-- BUTTON EVENTS
+--========================================================--
+
+AimButton.MouseButton1Click:Connect(function()
+	AIM_ENABLED = not AIM_ENABLED
+
+	if not AIM_ENABLED then
+		CurrentTarget = nil
+	end
+
+	updateButtons()
+end)
+
+ESPButton.MouseButton1Click:Connect(function()
+	ESP_ENABLED = not ESP_ENABLED
+
+	if not ESP_ENABLED then
+		for player in pairs(highlights) do
+			removeESP(player)
 		end
+	end
 
-		--============================================
-		-- AIM
-		--============================================
+	updateButtons()
+end)
 
-		if AIM_ENABLED then
+--========================================================--
+-- MINIMIZE
+--========================================================--
 
-			if not Character
-				or not Humanoid
-				or Humanoid.Health <= 0
-				or not RootPart then
+local minimized = false
 
-				CurrentTarget = nil
-				CurrentTargetPart = nil
-				Status.Text = "Target: None"
+Minimize.MouseButton1Click:Connect(function()
+	minimized = not minimized
 
-			else
+	AimButton.Visible = not minimized
+	ESPButton.Visible = not minimized
 
-				local newTarget, newPart =
-					findBestTarget()
+	if minimized then
+		Main.Size = UDim2.fromOffset(240, 45)
+	else
+		Main.Size = UDim2.fromOffset(240, 150)
+	end
+end)
 
-				CurrentTarget = newTarget
-				CurrentTargetPart = newPart
+--========================================================--
+-- CLOSE
+--========================================================--
 
-				if CurrentTarget
-					and CurrentTargetPart
-					and isEnemy(CurrentTarget) then
+Close.MouseButton1Click:Connect(function()
+	for player in pairs(highlights) do
+		removeESP(player)
+	end
 
-					local targetHumanoid =
-						CurrentTarget.Character
-						and CurrentTarget.Character:
-							FindFirstChildOfClass("Humanoid")
+	ESP_FOLDER:Destroy()
+	ScreenGui:Destroy()
+end)
 
-					if targetHumanoid
-						and targetHumanoid.Health > 0 then
+--========================================================--
+-- DRAGGING
+--========================================================--
 
-						aimAt(CurrentTargetPart)
+local dragging = false
+local dragStart
+local startPosition
 
-						local targetRoot =
-							CurrentTarget.Character:
-							FindFirstChild("HumanoidRootPart")
+local function updateDrag(input)
+	local delta = input.Position - dragStart
 
-						local distance = 0
+	Main.Position =
+		UDim2.new(
+			startPosition.X.Scale,
+			startPosition.X.Offset + delta.X,
+			startPosition.Y.Scale,
+			startPosition.Y.Offset + delta.Y
+		)
+end
 
-						if targetRoot then
-							distance =
-								(
-									targetRoot.Position
-									- RootPart.Position
-								).Magnitude
-						end
+Main.InputBegan:Connect(function(input)
 
-						Status.Text =
-							"Target: "
-							.. CurrentTarget.DisplayName
-							.. "  •  "
-							.. math.floor(distance)
-							.. " studs"
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
 
-					else
+		dragging = true
+		dragStart = input.Position
+		startPosition = Main.Position
 
-						CurrentTarget = nil
-						CurrentTargetPart = nil
-						Status.Text = "Target: None"
+		input.Changed:Connect(function()
 
-					end
+			if input.UserInputState ==
+				Enum.UserInputState.End then
 
-				else
-
-					CurrentTarget = nil
-					CurrentTargetPart = nil
-					Status.Text = "Target: None"
-
-				end
+				dragging = false
 			end
+		end)
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+
+	if dragging then
+
+		if input.UserInputType ==
+			Enum.UserInputType.MouseMovement
+			or input.UserInputType ==
+			Enum.UserInputType.Touch then
+
+			updateDrag(input)
+		end
+	end
+end)
+
+--========================================================--
+-- MAIN AIM LOOP
+--========================================================--
+
+local espTimer = 0
+
+RunService.RenderStepped:Connect(function(deltaTime)
+
+	--====================================================--
+	-- AIM
+	--====================================================--
+
+	if AIM_ENABLED then
+
+		local target, targetPart = getBestTarget()
+
+		if target and targetPart then
+
+			CurrentTarget = target
+
+			local cameraPosition = Camera.CFrame.Position
+
+			local desired =
+				CFrame.lookAt(
+					cameraPosition,
+					targetPart.Position
+				)
+
+			Camera.CFrame =
+				Camera.CFrame:Lerp(
+					desired,
+					AIM_STRENGTH
+				)
 
 		else
-
 			CurrentTarget = nil
-			CurrentTargetPart = nil
-			Status.Text = "Target: None"
-
 		end
-
-		--============================================
-		-- ESP
-		--============================================
-
-		refreshESP()
+	else
+		CurrentTarget = nil
 	end
-)
 
---========================================================
--- INITIAL STATE
---========================================================
+	--====================================================--
+	-- ESP
+	--====================================================--
 
-updateAimUI()
-updateESPUI()
+	espTimer += deltaTime
+
+	if espTimer >= 0.15 then
+		espTimer = 0
+
+		if ESP_ENABLED then
+			refreshESP()
+		end
+	end
+end)
+
+--========================================================--
+-- RESPAWN / CHARACTER CHANGES
+--========================================================--
+
+Players.PlayerAdded:Connect(function(player)
+
+	player.CharacterAdded:Connect(function()
+		task.wait(0.5)
+
+		if ESP_ENABLED then
+			createESP(player)
+		end
+	end)
+end)
+
+for _, player in ipairs(Players:GetPlayers()) do
+
+	if player ~= LocalPlayer then
+
+		player.CharacterAdded:Connect(function()
+			task.wait(0.5)
+
+			if ESP_ENABLED then
+				createESP(player)
+			end
+		end)
+
+	end
+end
