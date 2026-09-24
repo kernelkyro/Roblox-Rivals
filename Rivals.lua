@@ -1,49 +1,60 @@
---// RIVALS-STYLE AIM ASSIST
---// Place this LocalScript inside:
---// StarterPlayer > StarterPlayerScripts
-
---==================================================
--- SERVICES
---==================================================
+--========================================================
+-- RIVALS-STYLE AIM ASSIST
+-- Camera / center-crosshair targeting
+-- For your own Roblox game
+--========================================================
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
 
---==================================================
+--========================================================
 -- SETTINGS
---==================================================
+--========================================================
 
-local AIM_ENABLED = false
+local ENABLED = false
 
--- Extremely large FOV
-local FOV_RADIUS = 1000
+-- Very large targeting area
+local FOV_RADIUS = 1500
 
--- Extremely large world range
-local MAX_AIM_DISTANCE = 2000
+-- Very large world range
+local MAX_DISTANCE = 3000
 
--- Lower = faster/more aggressive tracking
-local AIM_SMOOTHNESS = 0.12
+-- Camera tracking speed
+-- 1 = instant
+-- 0.5 = very fast
+local AIM_STRENGTH = 0.75
 
--- Target preference
-local TARGET_HEAD = true
+-- Keep the same target when possible
+-- This prevents target jumping/jitter
+local TARGET_STICKINESS = 250
+
+-- Prefer torso at extremely close range
+local CLOSE_RANGE = 18
 
 -- Team filtering
 local IGNORE_TEAMMATES = true
 
--- Wall checking
-local REQUIRE_LINE_OF_SIGHT = true
+-- Don't aim through walls
+local WALL_CHECK = true
 
---==================================================
--- CHARACTER
---==================================================
+--========================================================
+-- VARIABLES
+--========================================================
 
+local Camera = workspace.CurrentCamera
 local Character
 local Humanoid
 local RootPart
+
+local CurrentTarget = nil
+local CurrentTargetPart = nil
+
+--========================================================
+-- CHARACTER UPDATE
+--========================================================
 
 local function updateCharacter()
 	Character = LocalPlayer.Character
@@ -61,25 +72,34 @@ end
 updateCharacter()
 
 LocalPlayer.CharacterAdded:Connect(function()
-	task.wait(0.5)
+	task.wait(0.25)
 	updateCharacter()
+
+	CurrentTarget = nil
+	CurrentTargetPart = nil
 end)
 
---==================================================
+--========================================================
 -- GUI
---==================================================
+--========================================================
+
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "AimAssistUI"
+ScreenGui.Name = "SolaceAimAssist"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.IgnoreGuiInset = true
-ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+ScreenGui.Parent = PlayerGui
+
+--========================================================
+-- MAIN FRAME
+--========================================================
 
 local Main = Instance.new("Frame")
 Main.Name = "Main"
-Main.Size = UDim2.fromOffset(300, 190)
-Main.Position = UDim2.new(0.5, -150, 0.2, 0)
-Main.BackgroundColor3 = Color3.fromRGB(18, 20, 28)
+Main.Size = UDim2.fromOffset(310, 185)
+Main.Position = UDim2.new(0.5, -155, 0.18, 0)
+Main.BackgroundColor3 = Color3.fromRGB(17, 19, 27)
 Main.BorderSizePixel = 0
 Main.Parent = ScreenGui
 
@@ -87,76 +107,80 @@ local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 12)
 MainCorner.Parent = Main
 
-local Stroke = Instance.new("UIStroke")
-Stroke.Thickness = 1.5
-Stroke.Color = Color3.fromRGB(70, 75, 95)
-Stroke.Parent = Main
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Thickness = 1.5
+MainStroke.Color = Color3.fromRGB(75, 80, 100)
+MainStroke.Parent = Main
 
---==================================================
+--========================================================
 -- TITLE
---==================================================
+--========================================================
 
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -80, 0, 45)
-Title.Position = UDim2.fromOffset(15, 0)
+Title.Name = "Title"
+Title.Size = UDim2.new(1, -90, 0, 42)
+Title.Position = UDim2.fromOffset(14, 0)
 Title.BackgroundTransparency = 1
 Title.Text = "AIM ASSIST"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.TextSize = 20
+Title.TextSize = 19
 Title.Font = Enum.Font.GothamBold
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = Main
 
---==================================================
+--========================================================
 -- MINIMIZE
---==================================================
+--========================================================
 
 local Minimize = Instance.new("TextButton")
-Minimize.Size = UDim2.fromOffset(34, 30)
-Minimize.Position = UDim2.new(1, -74, 0, 7)
-Minimize.BackgroundColor3 = Color3.fromRGB(35, 38, 50)
+Minimize.Name = "Minimize"
+Minimize.Size = UDim2.fromOffset(32, 28)
+Minimize.Position = UDim2.new(1, -70, 0, 7)
+Minimize.BackgroundColor3 = Color3.fromRGB(38, 41, 52)
+Minimize.BorderSizePixel = 0
 Minimize.Text = "—"
 Minimize.TextColor3 = Color3.fromRGB(255, 255, 255)
 Minimize.TextSize = 18
 Minimize.Font = Enum.Font.GothamBold
-Minimize.BorderSizePixel = 0
 Minimize.Parent = Main
 
 local MinCorner = Instance.new("UICorner")
 MinCorner.CornerRadius = UDim.new(0, 7)
 MinCorner.Parent = Minimize
 
---==================================================
+--========================================================
 -- CLOSE
---==================================================
+--========================================================
 
 local Close = Instance.new("TextButton")
-Close.Size = UDim2.fromOffset(34, 30)
-Close.Position = UDim2.new(1, -38, 0, 7)
-Close.BackgroundColor3 = Color3.fromRGB(80, 35, 42)
+Close.Name = "Close"
+Close.Size = UDim2.fromOffset(32, 28)
+Close.Position = UDim2.new(1, -34, 0, 7)
+Close.BackgroundColor3 = Color3.fromRGB(75, 35, 43)
+Close.BorderSizePixel = 0
 Close.Text = "×"
 Close.TextColor3 = Color3.fromRGB(255, 255, 255)
-Close.TextSize = 21
+Close.TextSize = 20
 Close.Font = Enum.Font.GothamBold
-Close.BorderSizePixel = 0
 Close.Parent = Main
 
 local CloseCorner = Instance.new("UICorner")
 CloseCorner.CornerRadius = UDim.new(0, 7)
 CloseCorner.Parent = Close
 
---==================================================
+--========================================================
 -- TOGGLE
---==================================================
+--========================================================
 
 local Toggle = Instance.new("TextButton")
-Toggle.Size = UDim2.new(1, -30, 0, 48)
-Toggle.Position = UDim2.fromOffset(15, 55)
-Toggle.BackgroundColor3 = Color3.fromRGB(45, 48, 62)
+Toggle.Name = "Toggle"
+Toggle.Size = UDim2.new(1, -28, 0, 45)
+Toggle.Position = UDim2.fromOffset(14, 52)
+Toggle.BackgroundColor3 = Color3.fromRGB(43, 46, 58)
 Toggle.BorderSizePixel = 0
 Toggle.Text = "AIM ASSIST  •  OFF"
 Toggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-Toggle.TextSize = 16
+Toggle.TextSize = 15
 Toggle.Font = Enum.Font.GothamBold
 Toggle.Parent = Main
 
@@ -164,59 +188,69 @@ local ToggleCorner = Instance.new("UICorner")
 ToggleCorner.CornerRadius = UDim.new(0, 9)
 ToggleCorner.Parent = Toggle
 
---==================================================
--- STATUS
---==================================================
+--========================================================
+-- TARGET STATUS
+--========================================================
 
 local Status = Instance.new("TextLabel")
-Status.Size = UDim2.new(1, -30, 0, 25)
-Status.Position = UDim2.fromOffset(15, 110)
+Status.Name = "Status"
+Status.Size = UDim2.new(1, -28, 0, 25)
+Status.Position = UDim2.fromOffset(14, 105)
 Status.BackgroundTransparency = 1
 Status.Text = "Target: None"
-Status.TextColor3 = Color3.fromRGB(190, 195, 210)
-Status.TextSize = 14
+Status.TextColor3 = Color3.fromRGB(195, 198, 215)
+Status.TextSize = 13
 Status.Font = Enum.Font.Gotham
 Status.TextXAlignment = Enum.TextXAlignment.Left
 Status.Parent = Main
 
---==================================================
--- INFO
---==================================================
+--========================================================
+-- SETTINGS TEXT
+--========================================================
 
-local Info = Instance.new("TextLabel")
-Info.Size = UDim2.new(1, -30, 0, 35)
-Info.Position = UDim2.fromOffset(15, 140)
-Info.BackgroundTransparency = 1
-Info.Text = "FOV: 1000  •  Range: 2000 studs"
-Info.TextColor3 = Color3.fromRGB(130, 135, 155)
-Info.TextSize = 12
-Info.Font = Enum.Font.Gotham
-Info.TextXAlignment = Enum.TextXAlignment.Left
-Info.Parent = Main
+local SettingsText = Instance.new("TextLabel")
+SettingsText.Name = "Settings"
+SettingsText.Size = UDim2.new(1, -28, 0, 35)
+SettingsText.Position = UDim2.fromOffset(14, 135)
+SettingsText.BackgroundTransparency = 1
+SettingsText.Text =
+	"FOV 1500  •  RANGE 3000\nClose-range targeting: ON"
 
---==================================================
--- TOGGLE FUNCTION
---==================================================
+SettingsText.TextColor3 = Color3.fromRGB(125, 130, 150)
+SettingsText.TextSize = 11
+SettingsText.Font = Enum.Font.Gotham
+SettingsText.TextXAlignment = Enum.TextXAlignment.Left
+SettingsText.Parent = Main
 
-local function updateToggle()
-	if AIM_ENABLED then
+--========================================================
+-- UI TOGGLE
+--========================================================
+
+local function updateUI()
+	if ENABLED then
 		Toggle.Text = "AIM ASSIST  •  ON"
-		Toggle.BackgroundColor3 = Color3.fromRGB(45, 100, 70)
+		Toggle.BackgroundColor3 = Color3.fromRGB(38, 105, 70)
 	else
 		Toggle.Text = "AIM ASSIST  •  OFF"
-		Toggle.BackgroundColor3 = Color3.fromRGB(45, 48, 62)
+		Toggle.BackgroundColor3 = Color3.fromRGB(43, 46, 58)
 		Status.Text = "Target: None"
 	end
 end
 
 Toggle.MouseButton1Click:Connect(function()
-	AIM_ENABLED = not AIM_ENABLED
-	updateToggle()
+	ENABLED = not ENABLED
+
+	if not ENABLED then
+		CurrentTarget = nil
+		CurrentTargetPart = nil
+	end
+
+	updateUI()
 end)
 
---==================================================
+--========================================================
 -- MINIMIZE
---==================================================
+--========================================================
 
 local minimized = false
 
@@ -224,52 +258,50 @@ Minimize.MouseButton1Click:Connect(function()
 	minimized = not minimized
 
 	if minimized then
-		Main.Size = UDim2.fromOffset(300, 48)
+		Main.Size = UDim2.fromOffset(310, 47)
 
 		Toggle.Visible = false
 		Status.Visible = false
-		Info.Visible = false
+		SettingsText.Visible = false
 
 		Minimize.Text = "+"
 	else
-		Main.Size = UDim2.fromOffset(300, 190)
+		Main.Size = UDim2.fromOffset(310, 185)
 
 		Toggle.Visible = true
 		Status.Visible = true
-		Info.Visible = true
+		SettingsText.Visible = true
 
 		Minimize.Text = "—"
 	end
 end)
 
---==================================================
+--========================================================
 -- CLOSE
---==================================================
+--========================================================
 
 Close.MouseButton1Click:Connect(function()
+	ENABLED = false
+	CurrentTarget = nil
+	CurrentTargetPart = nil
+
+	pcall(function()
+		RunService:UnbindFromRenderStep("SolaceAimAssist")
+	end)
+
 	ScreenGui:Destroy()
 end)
 
---==================================================
+--========================================================
 -- DRAGGING
---==================================================
+--========================================================
 
 local dragging = false
 local dragStart
 local startPosition
 
-local function updateDrag(input)
-	local delta = input.Position - dragStart
-
-	Main.Position = UDim2.new(
-		startPosition.X.Scale,
-		startPosition.X.Offset + delta.X,
-		startPosition.Y.Scale,
-		startPosition.Y.Offset + delta.Y
-	)
-end
-
 Title.InputBegan:Connect(function(input)
+
 	if input.UserInputType == Enum.UserInputType.MouseButton1
 		or input.UserInputType == Enum.UserInputType.Touch then
 
@@ -278,32 +310,48 @@ Title.InputBegan:Connect(function(input)
 		startPosition = Main.Position
 
 		input.Changed:Connect(function()
+
 			if input.UserInputState == Enum.UserInputState.End then
 				dragging = false
 			end
+
 		end)
 	end
 end)
 
 UserInputService.InputChanged:Connect(function(input)
-	if dragging and (
-		input.UserInputType == Enum.UserInputType.MouseMovement
-		or input.UserInputType == Enum.UserInputType.Touch
-	) then
-		updateDrag(input)
+
+	if not dragging then
+		return
+	end
+
+	if input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch then
+
+		local delta = input.Position - dragStart
+
+		Main.Position = UDim2.new(
+			startPosition.X.Scale,
+			startPosition.X.Offset + delta.X,
+
+			startPosition.Y.Scale,
+			startPosition.Y.Offset + delta.Y
+		)
 	end
 end)
 
---==================================================
+--========================================================
 -- TEAM CHECK
---==================================================
+--========================================================
 
 local function isEnemy(player)
+
 	if player == LocalPlayer then
 		return false
 	end
 
 	if IGNORE_TEAMMATES then
+
 		if LocalPlayer.Team ~= nil
 			and player.Team ~= nil
 			and LocalPlayer.Team == player.Team then
@@ -315,50 +363,118 @@ local function isEnemy(player)
 	return true
 end
 
---==================================================
--- CHARACTER VALIDATION
---==================================================
+--========================================================
+-- ALIVE CHECK
+--========================================================
 
-local function getTargetPart(character)
+local function getHumanoid(character)
+
 	if not character then
 		return nil
 	end
 
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local humanoid =
+		character:FindFirstChildOfClass("Humanoid")
 
-	if not humanoid or humanoid.Health <= 0 then
+	if not humanoid then
 		return nil
 	end
 
-	-- Head first
-	if TARGET_HEAD then
-		local head = character:FindFirstChild("Head")
-
-		if head and head:IsA("BasePart") then
-			return head
-		end
+	if humanoid.Health <= 0 then
+		return nil
 	end
 
-	-- Torso fallback
+	return humanoid
+end
+
+--========================================================
+-- GET AIM PART
+--
+-- IMPORTANT:
+-- At normal/long range:
+--     Head is preferred.
+--
+-- At extremely close range:
+--     UpperTorso/Torso is preferred.
+--
+-- This prevents the camera from behaving badly when
+-- somebody is practically standing inside the player.
+--========================================================
+
+local function getAimPart(player)
+
+	local character = player.Character
+
+	if not character then
+		return nil
+	end
+
+	local humanoid = getHumanoid(character)
+
+	if not humanoid then
+		return nil
+	end
+
+	local targetRoot =
+		character:FindFirstChild("HumanoidRootPart")
+
+	if not targetRoot then
+		return nil
+	end
+
+	local myRoot = RootPart
+
+	if not myRoot then
+		return nil
+	end
+
+	local distance =
+		(targetRoot.Position - myRoot.Position).Magnitude
+
+	-- CLOSE RANGE
+	if distance <= CLOSE_RANGE then
+
+		local torso =
+			character:FindFirstChild("UpperTorso")
+			or character:FindFirstChild("Torso")
+
+		if torso and torso:IsA("BasePart") then
+			return torso
+		end
+
+		return targetRoot
+	end
+
+	-- NORMAL RANGE
+	local head = character:FindFirstChild("Head")
+
+	if head and head:IsA("BasePart") then
+		return head
+	end
+
 	local torso =
 		character:FindFirstChild("UpperTorso")
 		or character:FindFirstChild("Torso")
-		or character:FindFirstChild("HumanoidRootPart")
 
 	if torso and torso:IsA("BasePart") then
 		return torso
 	end
 
-	return nil
+	return targetRoot
 end
 
---==================================================
--- LINE OF SIGHT
---==================================================
+--========================================================
+-- VISIBILITY CHECK
+--========================================================
 
-local function hasLineOfSight(targetPart)
-	if not REQUIRE_LINE_OF_SIGHT then
+local function canSee(part)
+
+	if not WALL_CHECK then
 		return true
+	end
+
+	if not Camera then
+		return false
 	end
 
 	if not Character then
@@ -366,14 +482,17 @@ local function hasLineOfSight(targetPart)
 	end
 
 	local origin = Camera.CFrame.Position
-	local direction = targetPart.Position - origin
+	local direction = part.Position - origin
 
 	local params = RaycastParams.new()
+
 	params.FilterType = Enum.RaycastFilterType.Exclude
+
 	params.FilterDescendantsInstances = {
 		Character,
 		Camera
 	}
+
 	params.IgnoreWater = true
 
 	local result = workspace:Raycast(
@@ -382,102 +501,143 @@ local function hasLineOfSight(targetPart)
 		params
 	)
 
-	if not result then
+	if result == nil then
 		return true
 	end
 
-	return result.Instance:IsDescendantOf(targetPart.Parent)
+	return result.Instance:IsDescendantOf(part.Parent)
 end
 
---==================================================
--- TARGET FINDING
---==================================================
+--========================================================
+-- SCREEN DISTANCE
+--========================================================
 
-local function getBestTarget()
-	if not Character or not RootPart then
-		return nil
-	end
+local function getScreenDistance(part)
 
-	local viewportSize = Camera.ViewportSize
+	local viewport = Camera.ViewportSize
 
-	local screenCenter = Vector2.new(
-		viewportSize.X / 2,
-		viewportSize.Y / 2
+	local center = Vector2.new(
+		viewport.X / 2,
+		viewport.Y / 2
 	)
 
-	local bestTarget = nil
+	local screenPosition, visible =
+		Camera:WorldToViewportPoint(part.Position)
+
+	if not visible then
+		return math.huge
+	end
+
+	local screenPoint = Vector2.new(
+		screenPosition.X,
+		screenPosition.Y
+	)
+
+	return (screenPoint - center).Magnitude
+end
+
+--========================================================
+-- TARGET SCORE
+--========================================================
+
+local function getTargetScore(player, part)
+
+	local screenDistance =
+		getScreenDistance(part)
+
+	if screenDistance == math.huge then
+		return math.huge
+	end
+
+	if screenDistance > FOV_RADIUS then
+		return math.huge
+	end
+
+	if not RootPart then
+		return math.huge
+	end
+
+	local targetRoot =
+		player.Character
+		and player.Character:FindFirstChild("HumanoidRootPart")
+
+	if not targetRoot then
+		return math.huge
+	end
+
+	local worldDistance =
+		(targetRoot.Position - RootPart.Position).Magnitude
+
+	if worldDistance > MAX_DISTANCE then
+		return math.huge
+	end
+
+	if not canSee(part) then
+		return math.huge
+	end
+
+	-- Lower score = better target
+	local score = screenDistance
+
+	-- Strong preference for extremely close enemies
+	if worldDistance <= CLOSE_RANGE then
+		score -= 500
+	elseif worldDistance <= 40 then
+		score -= 150
+	end
+
+	-- Keep current target stable
+	if player == CurrentTarget then
+		score -= TARGET_STICKINESS
+	end
+
+	return score
+end
+
+--========================================================
+-- FIND BEST TARGET
+--========================================================
+
+local function findBestTarget()
+
+	if not Character or not RootPart then
+		return nil, nil
+	end
+
+	local bestPlayer = nil
+	local bestPart = nil
 	local bestScore = math.huge
 
 	for _, player in ipairs(Players:GetPlayers()) do
 
 		if isEnemy(player) then
 
-			local character = player.Character
-			local targetPart = getTargetPart(character)
+			local part = getAimPart(player)
 
-			if targetPart then
+			if part then
 
-				local distance = (
-					targetPart.Position - RootPart.Position
-				).Magnitude
+				local score =
+					getTargetScore(player, part)
 
-				if distance <= MAX_AIM_DISTANCE then
-
-					local screenPosition, onScreen =
-						Camera:WorldToViewportPoint(targetPart.Position)
-
-					if onScreen then
-
-						local screenDistance =
-							(Vector2.new(
-								screenPosition.X,
-								screenPosition.Y
-							) - screenCenter).Magnitude
-
-						if screenDistance <= FOV_RADIUS then
-
-							if hasLineOfSight(targetPart) then
-
-								-- Distance is slightly considered so
-								-- extremely close targets behave correctly.
-								local closeBonus = 0
-
-								if distance <= 12 then
-									closeBonus = -250
-								elseif distance <= 30 then
-									closeBonus = -100
-								end
-
-								local score =
-									screenDistance + closeBonus
-
-								if score < bestScore then
-									bestScore = score
-									bestTarget = {
-										Player = player,
-										Part = targetPart,
-										Distance = distance
-									}
-								end
-							end
-						end
-					end
+				if score < bestScore then
+					bestScore = score
+					bestPlayer = player
+					bestPart = part
 				end
 			end
 		end
 	end
 
-	return bestTarget
+	return bestPlayer, bestPart
 end
 
---==================================================
--- AIM
---==================================================
+--========================================================
+-- AIM CAMERA
+--========================================================
 
-local currentTarget = nil
+local function aimAt(part)
 
-local function aimAt(targetPart)
-	if not targetPart then
+	if not part then
 		return
 	end
 
@@ -485,32 +645,51 @@ local function aimAt(targetPart)
 		return
 	end
 
-	local cameraPosition = Camera.CFrame.Position
-	local targetPosition = targetPart.Position
+	local cameraPosition =
+		Camera.CFrame.Position
 
-	-- Direct look-at makes close targets reliable.
-	local desiredCFrame = CFrame.lookAt(
-		cameraPosition,
-		targetPosition
-	)
+	local targetPosition =
+		part.Position
 
-	Camera.CFrame = Camera.CFrame:Lerp(
-		desiredCFrame,
-		AIM_SMOOTHNESS
-	)
+	local direction =
+		targetPosition - cameraPosition
+
+	if direction.Magnitude < 0.05 then
+		return
+	end
+
+	-- Preserve camera position.
+	-- Only rotate the camera toward the target.
+	local desired =
+		CFrame.lookAt(
+			cameraPosition,
+			targetPosition
+		)
+
+	-- Very aggressive tracking
+	Camera.CFrame =
+		Camera.CFrame:Lerp(
+			desired,
+			AIM_STRENGTH
+		)
 end
 
---==================================================
--- MAIN LOOP
---==================================================
+--========================================================
+-- MAIN AIM LOOP
+--========================================================
 
 RunService:BindToRenderStep(
-	"AimAssist_Render",
-	Enum.RenderPriority.Camera.Value + 1,
+	"SolaceAimAssist",
+	Enum.RenderPriority.Camera.Value + 100,
 	function()
 
-		if not AIM_ENABLED then
-			currentTarget = nil
+		if not ENABLED then
+			return
+		end
+
+		Camera = workspace.CurrentCamera
+
+		if not Camera then
 			return
 		end
 
@@ -519,47 +698,75 @@ RunService:BindToRenderStep(
 			or Humanoid.Health <= 0
 			or not RootPart then
 
-			currentTarget = nil
+			CurrentTarget = nil
+			CurrentTargetPart = nil
+
 			Status.Text = "Target: None"
+
 			return
 		end
 
-		-- Find the best target every frame.
-		-- This keeps the system responsive when enemies
-		-- move, jump, or suddenly get close.
-		currentTarget = getBestTarget()
+		-- Find target
+		local newTarget, newPart =
+			findBestTarget()
 
-		if currentTarget
-			and currentTarget.Part
-			and currentTarget.Part.Parent then
+		CurrentTarget = newTarget
+		CurrentTargetPart = newPart
 
-			aimAt(currentTarget.Part)
+		-- Aim
+		if CurrentTarget
+			and CurrentTargetPart then
 
-			Status.Text =
-				"Target: "
-				.. currentTarget.Player.DisplayName
-				.. "  •  "
-				.. math.floor(currentTarget.Distance)
-				.. " studs"
+			-- Re-check that target is still alive
+			local targetHumanoid =
+				CurrentTarget.Character
+				and CurrentTarget.Character:
+					FindFirstChildOfClass("Humanoid")
+
+			if targetHumanoid
+				and targetHumanoid.Health > 0 then
+
+				aimAt(CurrentTargetPart)
+
+				local targetRoot =
+					CurrentTarget.Character:
+					FindFirstChild("HumanoidRootPart")
+
+				local distance = 0
+
+				if targetRoot then
+					distance =
+						(
+							targetRoot.Position
+							- RootPart.Position
+						).Magnitude
+				end
+
+				Status.Text =
+					"Target: "
+					.. CurrentTarget.DisplayName
+					.. "  •  "
+					.. math.floor(distance)
+					.. " studs"
+
+			else
+
+				CurrentTarget = nil
+				CurrentTargetPart = nil
+				Status.Text = "Target: None"
+
+			end
 
 		else
+
 			Status.Text = "Target: None"
+
 		end
 	end
 )
 
---==================================================
--- CLEANUP
---==================================================
+--========================================================
+-- INITIALIZE
+--========================================================
 
-ScreenGui.Destroying:Connect(function()
-	pcall(function()
-		RunService:UnbindFromRenderStep("AimAssist_Render")
-	end)
-end)
-
---==================================================
--- INITIAL STATE
---==================================================
-
-updateToggle()
+updateUI()
