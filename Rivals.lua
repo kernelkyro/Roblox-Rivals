@@ -891,7 +891,33 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 
 		updateESPUI()
 	end
+		
+	-- H = Minimize / Restore UI
+	if input.KeyCode == Enum.KeyCode.H then
 
+		minimized = not minimized
+
+		if minimized then
+			Main.Size = UDim2.fromOffset(315, 47)
+
+			AimToggle.Visible = false
+			ESPToggle.Visible = false
+			Status.Visible = false
+			SettingsText.Visible = false
+
+			Minimize.Text = "+"
+		else
+			Main.Size = UDim2.fromOffset(315, 250)
+
+			AimToggle.Visible = true
+			ESPToggle.Visible = true
+			Status.Visible = true
+			SettingsText.Visible = true
+
+			Minimize.Text = "—"
+		end
+
+	end
 end)
 --========================================================
 -- MAIN LOOP
