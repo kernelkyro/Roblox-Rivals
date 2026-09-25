@@ -849,7 +849,50 @@ Players.PlayerRemoving:Connect(function(player)
 		CurrentTargetPart = nil
 	end
 end)
+--========================================================
+-- PC KEYBOARD HOTKEYS
+-- F = AIM ASSIST
+-- G = ENEMY ESP
+--========================================================
 
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+
+	-- Don't trigger hotkeys while typing in a TextBox
+	if gameProcessed then
+		return
+	end
+
+	-- F = Aim Assist
+	if input.KeyCode == Enum.KeyCode.F then
+
+		AIM_ENABLED = not AIM_ENABLED
+
+		if not AIM_ENABLED then
+			CurrentTarget = nil
+			CurrentTargetPart = nil
+			Status.Text = "Target: None"
+		end
+
+		updateAimUI()
+	end
+
+	-- G = Enemy ESP
+	if input.KeyCode == Enum.KeyCode.G then
+
+		ESP_ENABLED = not ESP_ENABLED
+
+		if not ESP_ENABLED then
+
+			for player in pairs(ESPObjects) do
+				removeESP(player)
+			end
+
+		end
+
+		updateESPUI()
+	end
+
+end)
 --========================================================
 -- MAIN LOOP
 --========================================================
